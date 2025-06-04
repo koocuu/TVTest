@@ -38,11 +38,4 @@ jobs:
         echo "App path: $APP_PATH"
         du -sh "$APP_PATH"
         echo "APP_SIZE=$(du -sh "$APP_PATH" | cut -f1)" >> $GITHUB_ENV
-        
-    - name: Upload build info
-      uses: actions/upload-artifact@v2
-      with:
-        name: build-info
-        path: |
-          ios/build/Build/Products/Release-appletvsimulator/TVTest.app
-          ios/build/Build/Products/Release-appletvsimulator/TVTest.app.dSYM 
+        echo "::set-output name=app_size::$(du -sh "$APP_PATH" | cut -f1)" 

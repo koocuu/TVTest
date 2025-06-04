@@ -36,6 +36,15 @@ jobs:
         cd ios
         APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "TVTest.app" -type d)
         echo "App path: $APP_PATH"
-        du -sh "$APP_PATH"
-        echo "APP_SIZE=$(du -sh "$APP_PATH" | cut -f1)" >> $GITHUB_ENV
-        echo "::set-output name=app_size::$(du -sh "$APP_PATH" | cut -f1)" 
+        
+        # 获取应用总大小
+        APP_SIZE=$(du -sh "$APP_PATH" | cut -f1)
+        echo "Total app size: $APP_SIZE"
+        
+        # 获取详细的大小信息
+        echo "Detailed size information:"
+        du -sh "$APP_PATH"/*
+        
+        # 使用新的环境文件语法设置输出
+        echo "APP_SIZE=$APP_SIZE" >> $GITHUB_ENV
+        echo "APP_SIZE=$APP_SIZE" >> $GITHUB_OUTPUT 

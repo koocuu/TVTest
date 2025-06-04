@@ -1,0 +1,62 @@
+name: tvOS Build Size Check
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: |
+        npm install
+        
+    - name: Install CocoaPods
+      run: |
+        cd ios
+        pod install
+        
+    - name: Setup Apple Certificate
+      uses: apple-actions/import-codesign-certs@v1
+      with:
+        p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+        p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        
+    - name: Setup Provisioning Profile
+      uses: apple-actions/download-provisioning-profiles@v1
+      with:
+        bundle-id: com.tvtest
+        profile-type: 'TVOS'
+        issuer-id: ${{ secrets.APPLE_ISSUER_ID }}
+        api-key-id: ${{ secrets.APPLE_KEY_ID }}
+        api-private-key: ${{ secrets.APPLE_PRIVATE_KEY }}
+        
+    - name: Build tvOS app for simulator
+      run: |
+        cd ios
+        xcodebuild -workspace TVTest.xcworkspace -scheme TVTest -configuration Release -destination 'platform=tvOS Simulator,name=Apple TV' build
+        
+    - name: Get app size
+      run: |
+        cd ios
+        APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "TVTest.app" -type d)
+        echo "App path: $APP_PATH"
+        du -sh "$APP_PATH"
+        
+    - name: Upload build info
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-info
+        path: |
+          ios/build/Build/Products/Release-appletvsimulator/TVTest.app
+          ios/build/Build/Products/Release-appletvsimulator/TVTest.app.dSYM 

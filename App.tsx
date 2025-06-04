@@ -1,117 +1,182 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, { useEffect, useRef, useLayoutEffect } from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
   View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Platform,
+  ScrollView,
+  InteractionManager,
 } from 'react-native';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+const NestedView = ({ level, maxLevel }: { level: number; maxLevel: number }) => {
+  const renderStartTime = useRef(Date.now());
+  const mountTime = useRef(0);
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+  // 相当于 onCreate
+  console.log(`[生命周期] Level ${level} 开始创建: ${renderStartTime.current}ms`);
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+  // 相当于 onStart
+  const jsxStartTime = Date.now();
+  console.log(`[生命周期] Level ${level} 开始渲染 JSX: ${jsxStartTime}ms`);
+
+  // 相当于 onResume
+  useLayoutEffect(() => {
+    mountTime.current = Date.now();
+    const renderTime = mountTime.current - renderStartTime.current;
+    console.log(`[生命周期] Level ${level} 挂载完成: ${mountTime.current}ms`);
+    console.log(`[性能监控] Level ${level} 总渲染耗时: ${renderTime}ms`);
+  }, [level]);
+
+  if (level > maxLevel) return null;
+
   return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
+    <View style={[styles.nestedContainer, { backgroundColor: `hsl(${level * 30}, 70%, 80%)` }]}>
+      <Text style={styles.levelText}>Level {level}</Text>
+      <View style={styles.contentContainer}>
+        <NestedView level={level + 1} maxLevel={maxLevel} />
+        <NestedView level={level + 1} maxLevel={maxLevel} />
+      </View>
     </View>
   );
-}
+};
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+const App = () => {
+  const [selectedPlatform, setSelectedPlatform] = React.useState<'android' | 'tvos'>(
+    Platform.OS === 'android' ? 'android' : 'tvos'
+  );
+  const renderStartTime = useRef(Date.now());
+  const mountTime = useRef(0);
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
+  // 相当于 onCreate
+  console.log(`[生命周期] App 开始创建: ${renderStartTime.current}ms`);
+
+  // 相当于 onStart
+  const jsxStartTime = Date.now();
+  console.log(`[生命周期] App 开始渲染 JSX: ${jsxStartTime}ms`);
+
+  // 相当于 onResume
+  useLayoutEffect(() => {
+    mountTime.current = Date.now();
+    const renderTime = mountTime.current - renderStartTime.current;
+    console.log(`[生命周期] App 挂载完成: ${mountTime.current}ms`);
+    console.log(`[性能监控] App 总渲染耗时: ${renderTime}ms`);
+
+    // 相当于界面完全加载
+    InteractionManager.runAfterInteractions(() => {
+      const completeRenderTime = Date.now() - renderStartTime.current;
+      console.log(`[生命周期] App 完全加载完成: ${Date.now()}ms`);
+      console.log(`[性能监控] 页面完全渲染耗时: ${completeRenderTime}ms`);
+    });
+  }, []);
 
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Complex View Tree Demo</Text>
+        <Text style={styles.platformText}>Platform: {selectedPlatform}</Text>
+      </View>
+
+      <ScrollView 
+        style={styles.scrollView}
+        onScrollBeginDrag={() => {
+          console.time('scroll-time');
+        }}
+        onScrollEndDrag={() => {
+          console.timeEnd('scroll-time');
+        }}
+      >
+        <NestedView level={1} maxLevel={10} />
       </ScrollView>
-    </SafeAreaView>
+
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[styles.button, selectedPlatform === 'android' && styles.selectedButton]}
+          onPress={() => {
+            const startTime = Date.now();
+            setSelectedPlatform('android');
+            requestAnimationFrame(() => {
+              console.log('Android TV 切换耗时:', Date.now() - startTime, 'ms');
+            });
+          }}>
+          <Text style={styles.buttonText}>Android TV</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, selectedPlatform === 'tvos' && styles.selectedButton]}
+          onPress={() => {
+            const startTime = Date.now();
+            setSelectedPlatform('tvos');
+            requestAnimationFrame(() => {
+              console.log('tvOS 切换耗时:', Date.now() - startTime, 'ms');
+            });
+          }}>
+          <Text style={styles.buttonText}>tvOS</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
   },
-  sectionTitle: {
+  header: {
+    padding: 20,
+    backgroundColor: '#2196F3',
+  },
+  title: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 8,
   },
-  sectionDescription: {
-    marginTop: 8,
+  platformText: {
+    fontSize: 16,
+    color: 'white',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  nestedContainer: {
+    margin: 10,
+    padding: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  levelText: {
     fontSize: 18,
-    fontWeight: '400',
+    fontWeight: 'bold',
+    marginBottom: 10,
   },
-  highlight: {
-    fontWeight: '700',
+  contentContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  footer: {
+    flexDirection: 'row',
+    padding: 20,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+  },
+  button: {
+    flex: 1,
+    padding: 15,
+    marginHorizontal: 5,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  selectedButton: {
+    backgroundColor: '#2196F3',
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
   },
 });
 

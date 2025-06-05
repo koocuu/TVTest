@@ -53,25 +53,42 @@ jobs:
       run: |
         cd ios
         # 启动模拟器
+        echo "Booting simulator..."
         xcrun simctl boot "Apple TV"
         
+        # 获取应用标识符
+        echo "Getting bundle identifier..."
+        BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP_PATH/Info.plist")
+        echo "Bundle ID: $BUNDLE_ID"
+        
         # 安装应用
-        APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "TVTest.app" -type d)
+        echo "Installing app..."
         xcrun simctl install booted "$APP_PATH"
         
         # 启动应用并收集日志
         echo "Starting performance test..."
         
         # 启动应用
-        xcrun simctl launch booted com.TVTest &
+        echo "Launching app with bundle ID: $BUNDLE_ID"
+        xcrun simctl launch booted "$BUNDLE_ID" &
         APP_PID=$!
         
         # 等待应用启动
+        echo "Waiting for app to start..."
         sleep 5
+        
+        # 检查应用是否正在运行
+        if ! ps -p $APP_PID > /dev/null; then
+          echo "App failed to start. Checking system logs..."
+          xcrun simctl spawn booted log show --last 1m > system.log
+          echo "System logs:"
+          cat system.log
+          exit 1
+        fi
         
         # 收集日志
         echo "Collecting performance logs..."
-        xcrun simctl spawn booted log show --predicate 'process == "TVTest"' --last 5m > app.log
+        xcrun simctl spawn booted log show --predicate "process == '$BUNDLE_ID'" --last 5m > app.log
         
         # 分析日志中的时间戳
         echo "Analyzing performance data..."
@@ -92,8 +109,13 @@ jobs:
           echo "Could not find viewDidLoad or viewDidAppear timestamps in logs"
           echo "Log contents:"
           cat app.log
+          
+          # 检查应用状态
+          echo "Checking app status..."
+          xcrun simctl appinfo booted "$BUNDLE_ID"
         fi
         
         # 关闭应用和模拟器
+        echo "Cleaning up..."
         kill $APP_PID 2>/dev/null || true
         xcrun simctl shutdown "Apple TV" 

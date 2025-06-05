@@ -58,7 +58,20 @@ jobs:
         
         # 获取应用标识符
         echo "Getting bundle identifier..."
-        BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP_PATH/Info.plist")
+        APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "TVTest.app" -type d)
+        if [ -z "$APP_PATH" ]; then
+          echo "Error: Could not find TVTest.app"
+          exit 1
+        fi
+        
+        # 使用 defaults 命令读取 Info.plist
+        BUNDLE_ID=$(defaults read "$APP_PATH/Info.plist" CFBundleIdentifier 2>/dev/null)
+        if [ -z "$BUNDLE_ID" ]; then
+          echo "Error: Could not read CFBundleIdentifier from Info.plist"
+          echo "Info.plist contents:"
+          cat "$APP_PATH/Info.plist"
+          exit 1
+        fi
         echo "Bundle ID: $BUNDLE_ID"
         
         # 安装应用

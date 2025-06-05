@@ -52,13 +52,32 @@ jobs:
     - name: Test tvOS render time
       run: |
         cd ios
+        
+        # 设置模拟器环境
+        echo "Setting up simulator environment..."
+        export SIMULATOR_DEVICE="Apple TV"
+        export SIMULATOR_RUNTIME="tvOS"
+        
+        # 检查模拟器状态
+        echo "Checking simulator status..."
+        xcrun simctl list devices
+        
+        # 重置模拟器
+        echo "Resetting simulator..."
+        xcrun simctl shutdown "$SIMULATOR_DEVICE" || true
+        xcrun simctl erase "$SIMULATOR_DEVICE"
+        
         # 启动模拟器
         echo "Booting simulator..."
-        xcrun simctl boot "Apple TV"
+        xcrun simctl boot "$SIMULATOR_DEVICE"
         
         # 等待模拟器完全启动
         echo "Waiting for simulator to fully boot..."
-        sleep 10
+        sleep 15
+        
+        # 设置模拟器权限
+        echo "Setting simulator permissions..."
+        xcrun simctl privacy booted grant all
         
         # 获取应用标识符
         echo "Getting bundle identifier..."
@@ -91,12 +110,12 @@ jobs:
         
         # 启动应用
         echo "Launching app with bundle ID: $BUNDLE_ID"
-        xcrun simctl launch booted "$BUNDLE_ID" &
+        xcrun simctl launch --console booted "$BUNDLE_ID" &
         APP_PID=$!
         
         # 等待应用启动
         echo "Waiting for app to start..."
-        sleep 10
+        sleep 15
         
         # 检查应用是否正在运行
         if ! ps -p $APP_PID > /dev/null; then
@@ -112,6 +131,10 @@ jobs:
           # 检查应用状态
           echo "Checking app status..."
           xcrun simctl appinfo booted "$BUNDLE_ID"
+          
+          # 检查应用沙盒
+          echo "Checking app sandbox..."
+          xcrun simctl spawn booted ls -la /private/var/mobile/Containers/Data/Application/
           
           exit 1
         fi
@@ -148,4 +171,4 @@ jobs:
         # 关闭应用和模拟器
         echo "Cleaning up..."
         kill $APP_PID 2>/dev/null || true
-        xcrun simctl shutdown "Apple TV" 
+        xcrun simctl shutdown "$SIMULATOR_DEVICE" 

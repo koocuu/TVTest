@@ -1,7 +1,9 @@
-name: tvOS Build Size Check
+name: tvOS Build and Test
 
 on:
   push:
+    branches: [ main ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
@@ -10,10 +12,10 @@ jobs:
     runs-on: macos-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
         
@@ -21,15 +23,25 @@ jobs:
       run: |
         npm install
         
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.2'
+        bundler-cache: true
+        
     - name: Install CocoaPods
+      run: |
+        sudo gem install cocoapods
+        
+    - name: Install tvOS Simulator
+      run: |
+        xcversion simulators --install="Apple TV 4K (3rd generation) (EDA18377-A6DD-42CF-A5FA-A4620737EAC6)"
+        
+    - name: Build and Test tvOS app
       run: |
         cd ios
         pod install
-        
-    - name: Build tvOS app for simulator
-      run: |
-        cd ios
-        xcodebuild -workspace TVTest.xcworkspace -scheme TVTest -configuration Release -destination 'platform=tvOS Simulator,name=Apple TV' build
+        xcodebuild -workspace TVTest.xcworkspace -scheme TVTest-tvOS -configuration Debug -sdk appletvsimulator -destination 'platform=tvOS Simulator,id=EDA18377-A6DD-42CF-A5FA-A4620737EAC6' build test
         
     - name: Get app size
       run: |
@@ -45,130 +57,6 @@ jobs:
         echo "Detailed size information:"
         du -sh "$APP_PATH"/*
         
-        # 使用新的环境文件语法设置输出
+        # 设置输出变量
         echo "APP_SIZE=$APP_SIZE" >> $GITHUB_ENV
-        echo "APP_SIZE=$APP_SIZE" >> $GITHUB_OUTPUT
-
-    - name: Test tvOS render time
-      run: |
-        cd ios
-        
-        # 设置模拟器环境
-        echo "Setting up simulator environment..."
-        export SIMULATOR_DEVICE="Apple TV"
-        export SIMULATOR_RUNTIME="tvOS"
-        
-        # 检查模拟器状态
-        echo "Checking simulator status..."
-        xcrun simctl list devices
-        
-        # 重置模拟器
-        echo "Resetting simulator..."
-        xcrun simctl shutdown "$SIMULATOR_DEVICE" || true
-        xcrun simctl erase "$SIMULATOR_DEVICE"
-        
-        # 启动模拟器
-        echo "Booting simulator..."
-        xcrun simctl boot "$SIMULATOR_DEVICE"
-        
-        # 等待模拟器完全启动
-        echo "Waiting for simulator to fully boot..."
-        sleep 15
-        
-        # 设置模拟器权限
-        echo "Setting simulator permissions..."
-        xcrun simctl privacy booted grant all
-        
-        # 获取应用标识符
-        echo "Getting bundle identifier..."
-        APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "TVTest.app" -type d)
-        if [ -z "$APP_PATH" ]; then
-          echo "Error: Could not find TVTest.app"
-          exit 1
-        fi
-        
-        # 使用 plutil 命令读取 Info.plist
-        BUNDLE_ID=$(plutil -p "$APP_PATH/Info.plist" | grep CFBundleIdentifier | awk -F'"' '{print $4}')
-        if [ -z "$BUNDLE_ID" ]; then
-          echo "Error: Could not read CFBundleIdentifier from Info.plist"
-          echo "Info.plist contents:"
-          plutil -p "$APP_PATH/Info.plist"
-          exit 1
-        fi
-        echo "Bundle ID: $BUNDLE_ID"
-        
-        # 卸载旧版本（如果存在）
-        echo "Uninstalling previous version if exists..."
-        xcrun simctl uninstall booted "$BUNDLE_ID" || true
-        
-        # 安装应用
-        echo "Installing app..."
-        xcrun simctl install booted "$APP_PATH"
-        
-        # 启动应用并收集日志
-        echo "Starting performance test..."
-        
-        # 启动应用
-        echo "Launching app with bundle ID: $BUNDLE_ID"
-        xcrun simctl launch --console booted "$BUNDLE_ID" &
-        APP_PID=$!
-        
-        # 等待应用启动
-        echo "Waiting for app to start..."
-        sleep 15
-        
-        # 检查应用是否正在运行
-        if ! ps -p $APP_PID > /dev/null; then
-          echo "App failed to start. Checking system logs..."
-          xcrun simctl spawn booted log show --last 5m > system.log
-          echo "System logs:"
-          cat system.log
-          
-          # 检查模拟器状态
-          echo "Checking simulator status..."
-          xcrun simctl list devices
-          
-          # 检查应用状态
-          echo "Checking app status..."
-          xcrun simctl appinfo booted "$BUNDLE_ID"
-          
-          # 检查应用沙盒
-          echo "Checking app sandbox..."
-          xcrun simctl spawn booted ls -la /private/var/mobile/Containers/Data/Application/
-          
-          exit 1
-        fi
-        
-        # 收集日志
-        echo "Collecting performance logs..."
-        xcrun simctl spawn booted log show --predicate "process == '$BUNDLE_ID'" --last 5m > app.log
-        
-        # 分析日志中的时间戳
-        echo "Analyzing performance data..."
-        START_TIME=$(grep "viewDidLoad" app.log | head -n 1 | awk '{print $1}')
-        END_TIME=$(grep "viewDidAppear" app.log | head -n 1 | awk '{print $1}')
-        
-        if [ ! -z "$START_TIME" ] && [ ! -z "$END_TIME" ]; then
-          # 转换时间戳为秒数
-          START_SECONDS=$(date -j -f "%Y-%m-%d %H:%M:%S.%3N" "$START_TIME" +%s.%3N)
-          END_SECONDS=$(date -j -f "%Y-%m-%d %H:%M:%S.%3N" "$END_TIME" +%s.%3N)
-          
-          # 计算时间差
-          RENDER_TIME=$(echo "$END_SECONDS - $START_SECONDS" | bc)
-          echo "ViewDidLoad to ViewDidAppear time: $RENDER_TIME seconds"
-          echo "RENDER_TIME=$RENDER_TIME" >> $GITHUB_ENV
-          echo "RENDER_TIME=$RENDER_TIME" >> $GITHUB_OUTPUT
-        else
-          echo "Could not find viewDidLoad or viewDidAppear timestamps in logs"
-          echo "Log contents:"
-          cat app.log
-          
-          # 检查应用状态
-          echo "Checking app status..."
-          xcrun simctl appinfo booted "$BUNDLE_ID"
-        fi
-        
-        # 关闭应用和模拟器
-        echo "Cleaning up..."
-        kill $APP_PID 2>/dev/null || true
-        xcrun simctl shutdown "$SIMULATOR_DEVICE" 
+        echo "APP_SIZE=$APP_SIZE" >> $GITHUB_OUTPUT 

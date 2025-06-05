@@ -59,19 +59,35 @@ jobs:
         APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "TVTest.app" -type d)
         xcrun simctl install booted "$APP_PATH"
         
-        # 启动应用并测量渲染时间
-        echo "Starting render time test..."
-        START_TIME=$(date +%s.%N)
-        xcrun simctl launch booted com.TVTest
-        END_TIME=$(date +%s.%N)
+        # 启动应用并收集性能数据
+        echo "Starting performance test..."
+        
+        # 使用 instruments 收集性能数据
+        xcrun instruments -t Time\ Profiler -D performance.trace -w "Apple TV" com.TVTest &
+        INSTRUMENTS_PID=$!
+        
+        # 等待应用启动
+        sleep 5
+        
+        # 停止性能数据收集
+        kill $INSTRUMENTS_PID
+        
+        # 分析性能数据
+        echo "Analyzing performance data..."
+        xcrun simctl spawn booted log show --predicate 'subsystem == "com.TVTest"' --last 5m | grep -E "viewDidLoad|viewDidAppear" > performance.log
         
         # 计算渲染时间
-        RENDER_TIME=$(echo "$END_TIME - $START_TIME" | bc)
-        echo "Render time: $RENDER_TIME seconds"
+        VIEW_LOAD_TIME=$(grep "viewDidLoad" performance.log | head -n 1 | cut -d' ' -f1)
+        VIEW_APPEAR_TIME=$(grep "viewDidAppear" performance.log | head -n 1 | cut -d' ' -f1)
         
-        # 保存渲染时间到环境变量
-        echo "RENDER_TIME=$RENDER_TIME" >> $GITHUB_ENV
-        echo "RENDER_TIME=$RENDER_TIME" >> $GITHUB_OUTPUT
+        if [ ! -z "$VIEW_LOAD_TIME" ] && [ ! -z "$VIEW_APPEAR_TIME" ]; then
+          RENDER_TIME=$(echo "$VIEW_APPEAR_TIME - $VIEW_LOAD_TIME" | bc)
+          echo "ViewDidLoad to ViewDidAppear time: $RENDER_TIME seconds"
+          echo "RENDER_TIME=$RENDER_TIME" >> $GITHUB_ENV
+          echo "RENDER_TIME=$RENDER_TIME" >> $GITHUB_OUTPUT
+        else
+          echo "Could not find viewDidLoad or viewDidAppear timestamps"
+        fi
         
         # 关闭模拟器
         xcrun simctl shutdown "Apple TV" 

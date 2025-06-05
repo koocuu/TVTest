@@ -56,6 +56,10 @@ jobs:
         echo "Booting simulator..."
         xcrun simctl boot "Apple TV"
         
+        # 等待模拟器完全启动
+        echo "Waiting for simulator to fully boot..."
+        sleep 10
+        
         # 获取应用标识符
         echo "Getting bundle identifier..."
         APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "TVTest.app" -type d)
@@ -64,15 +68,19 @@ jobs:
           exit 1
         fi
         
-        # 使用 defaults 命令读取 Info.plist
-        BUNDLE_ID=$(defaults read "$APP_PATH/Info.plist" CFBundleIdentifier 2>/dev/null)
+        # 使用 plutil 命令读取 Info.plist
+        BUNDLE_ID=$(plutil -p "$APP_PATH/Info.plist" | grep CFBundleIdentifier | awk -F'"' '{print $4}')
         if [ -z "$BUNDLE_ID" ]; then
           echo "Error: Could not read CFBundleIdentifier from Info.plist"
           echo "Info.plist contents:"
-          cat "$APP_PATH/Info.plist"
+          plutil -p "$APP_PATH/Info.plist"
           exit 1
         fi
         echo "Bundle ID: $BUNDLE_ID"
+        
+        # 卸载旧版本（如果存在）
+        echo "Uninstalling previous version if exists..."
+        xcrun simctl uninstall booted "$BUNDLE_ID" || true
         
         # 安装应用
         echo "Installing app..."
@@ -88,14 +96,23 @@ jobs:
         
         # 等待应用启动
         echo "Waiting for app to start..."
-        sleep 5
+        sleep 10
         
         # 检查应用是否正在运行
         if ! ps -p $APP_PID > /dev/null; then
           echo "App failed to start. Checking system logs..."
-          xcrun simctl spawn booted log show --last 1m > system.log
+          xcrun simctl spawn booted log show --last 5m > system.log
           echo "System logs:"
           cat system.log
+          
+          # 检查模拟器状态
+          echo "Checking simulator status..."
+          xcrun simctl list devices
+          
+          # 检查应用状态
+          echo "Checking app status..."
+          xcrun simctl appinfo booted "$BUNDLE_ID"
+          
           exit 1
         fi
         
